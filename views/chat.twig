@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>Bienvenue sur l'application de chat</h1>
+    <div id="pseudo-container">
+        <form id="pseudo-form">
+            <label for="pseudo">Entrez votre pseudo :</label>
+            <input type="text" id="pseudo" placeholder="Votre pseudo" required>
+            <button type="submit">Rejoindre le chat</button>
+        </form>
+    </div>
+
+    <div id="chat-container" style="display: none;">
+        <ul id="messages"></ul>
+        <input id="message-input" autocomplete="off" placeholder="Tapez votre message...">
+        <button id="send-message">Envoyer</button>
+    </div>
+
+    <script>
+        const socket = io();
+        const pseudoForm = document.getElementById('pseudo-form');
+        const pseudoContainer = document.getElementById('pseudo-container');
+        const chatContainer = document.getElementById('chat-container');
+        const pseudoInput = document.getElementById('pseudo');
+        const messageInput = document.getElementById('message-input');
+        const sendMessageButton = document.getElementById('send-message');
+        const messagesList = document.getElementById('messages');
+
+        let pseudo = '';
+
+        pseudoForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            pseudo = pseudoInput.value.trim();
+            if (pseudo) {
+                pseudoContainer.style.display = 'none';
+                chatContainer.style.display = 'block';
+                socket.emit('join', pseudo);
+            }
+        });
+
+        sendMessageButton.addEventListener('click', () => {
+            const message = messageInput.value.trim();
+            if (message) {
+                socket.emit('chat message', { pseudo, message });
+                messageInput.value = '';
+            }
+        });
+
+        socket.on('chat message', (data) => {
+            const item = document.createElement('li');
+            item.textContent = `${data.pseudo}: ${data.message}`;
+            messagesList.appendChild(item);
+        });
+    </script>
+</body>
+</html>
