@@ -1,60 +1,76 @@
 import express from 'express';
-import twig from 'twig';
-import http from 'http';
 import { Server } from 'socket.io';
+import { createServer } from 'http';
+import twig from 'twig';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
+import { PrismaClient } from '@prisma/client';
+import dotenv from 'dotenv';
+dotenv.config();
 
+const prisma = new PrismaClient();
+
+// Pour obtenir __dirname en ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Express et serveur HTTP
 const app = express();
-const PORT = 3000;
+const httpServer = createServer(app);
+const io = new Server(httpServer);
 
-// Middleware to parse JSON and URL-encoded data
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Set Twig as the view engine
+// Config Twig
+app.set('views', join(__dirname, 'views'));
 app.set('view engine', 'twig');
-app.set('views', `${__dirname}/views`);
+app.engine('twig', twig.renderFile);
 
-// Basic route
+// Fichiers statiques
+app.use(express.static(join(__dirname, 'public')));
+
+// Route principale
 app.get('/', (req, res) => {
-    res.send('Welcome to the Chat Application!');
+  res.render('index.twig');
 });
 
-// Route to render the chat page
-app.get('/chat', (req, res) => {
-    res.render('chat', { title: 'Chat Application' });
+// Socket.IO
+io.on('connection', async (socket) => {
+  console.log('Un utilisateur connecté');
+
+  // Récupérer les derniers messages (par exemple, les 50 plus récents)
+  try {
+    const lastMessages = await prisma.message.findMany({
+      orderBy: { createdAt: 'asc' },  // ou 'desc' puis inverser côté client
+      take: 50,
+    });
+    // Envoyer l’historique au client connecté
+    socket.emit('chat history', lastMessages);
+  } catch (err) {
+    console.error('Erreur récupération historique:', err);
+  }
+
+  socket.on('chat message', async (data) => {
+    try {
+      await prisma.message.create({
+        data: {
+          pseudo: data.pseudo,
+          content: data.message,
+        },
+      });
+    } catch (err) {
+      console.error('Erreur sauvegarde message:', err);
+    }
+    io.emit('chat message', data);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Un utilisateur déconnecté');
+  });
 });
 
-// Create HTTP server
-const server = http.createServer(app);
 
-// Initialize Socket.IO
-const io = new Server(server);
 
-// Handle Socket.IO connections
-io.on('connection', (socket) => {
-    console.log('A user connected');
-
-    // Handle user joining with a pseudo
-    socket.on('join', (pseudo) => {
-        socket.pseudo = pseudo;
-        console.log(`${pseudo} joined the chat`);
-    });
-
-    socket.on('chat message', (data) => {
-        io.emit('chat message', { pseudo: socket.pseudo, message: data.message });
-    });
-
-    socket.on('disconnect', () => {
-        console.log(`${socket.pseudo || 'A user'} disconnected`);
-    });
-});
-
-// Start the server
-server.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+// Démarrage
+const PORT = process.env.PORT || 3000;
+httpServer.listen(PORT, () => {
+  console.log(`Serveur lancé sur http://localhost:${PORT}`);
 });
